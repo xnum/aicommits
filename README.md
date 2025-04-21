@@ -205,11 +205,11 @@ aicommits config set proxy=
 
 #### model
 
-Default: `gpt-3.5-turbo`
+Default: `gpt-4o-mini`
 
 The Chat Completions (`/v1/chat/completions`) model to use. Consult the list of models available in the [OpenAI Documentation](https://platform.openai.com/docs/models/model-endpoint-compatibility).
 
-> Tip: If you have access, try upgrading to [`gpt-4`](https://platform.openai.com/docs/models/gpt-4) for next-level code analysis. It can handle double the input size, but comes at a higher cost. Check out OpenAI's website to learn more.
+> Tip: If you need more advanced capabilities, you can try upgrading to [`gpt-4o`](https://platform.openai.com/docs/models/gpt-4o) for enhanced code analysis. It offers better performance but comes at a higher cost. Check out OpenAI's website to learn more.
 
 #### timeout
 

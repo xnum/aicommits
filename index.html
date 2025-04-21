@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>市場交易時間表月曆</title>
+    <!-- FullCalendar CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.8/index.global.min.css" rel="stylesheet" />
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            max-width: 1880px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            margin: 10px 0;
+        }
+        .market-form {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            display: inline-block;
+            vertical-align: top;
+            width: calc(33.33% - 22px);  /* 三欄排列 */
+            margin-right: 10px;
+        }
+        .market-form h2 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+        .form-group {
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+        }
+        label {
+            width: 120px;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        input, select {
+            padding: 3px;
+            width: 150px;
+            font-size: 0.9em;
+        }
+        .add-market-btn, #generateScheduleBtn {
+            margin: 0 5px 10px 0;
+            padding: 5px 10px;
+        }
+        #calendar {
+            height: calc(100vh - 150px);  /* 讓日曆填滿剩餘空間 */
+            margin: 0 auto;
+        }
+        .remove-market-btn {
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            padding: 3px 8px;
+            cursor: pointer;
+            float: right;
+            font-size: 0.8em;
+        }
+        .remove-market-btn:hover {
+            background-color: #c82333;
+        }
+        #marketForms {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>市場交易時間表月曆</h1>
+    <div class="container">
+        <div class="input-section">
+            <div id="marketForms">
+                <!-- 動態生成的市場配置表單將顯示在這裡 -->
+            </div>
+            <button id="addMarketBtn" class="add-market-btn">新增市場配置</button>
+            <button id="generateScheduleBtn">生成交易時間表</button>
+        </div>
+        <div class="calendar-section">
+            <div id="calendar"></div>
+        </div>
+    </div>
+
+    <!-- FullCalendar JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/6.1.8/index.global.min.js"></script>
+    <!-- Luxon for DateTime handling -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.3.0/luxon.min.js"></script>
+    <script>
+        // 定義 MarketStatus 和 MarketStatusCron 結構
+        class MarketStatus {
+            constructor({
+                Exchange = "",
+                Symbols = "",
+                DayStartAt = "",
+                DayDuration = "",
+                NightStartAt = "",
+                NightDuration = "",
+                WeekendShiftDate = 0,
+                TimeZone = "UTC"
+            }) {
+                this.Exchange = Exchange;
+                this.Symbols = Symbols.split(',').map(s => s.trim());
+                this.DayStartAt = DayStartAt;
+                this.DayDuration = DayDuration;
+                this.NightStartAt = NightStartAt;
+                this.NightDuration = NightDuration;
+                this.WeekendShiftDate = parseInt(WeekendShiftDate) || 0;
+                this.TimeZone = TimeZone;
+            }
+        }
+
+        class MarketStatusCron {
+            constructor({
+                Exchange = "",
+                Symbols = [],
+                IsOpen = false,
+                At = new Date()
+            }) {
+                this.Exchange = Exchange;
+                this.Symbols = Symbols;
+                this.IsOpen = IsOpen;
+                this.At = At;
+            }
+        }
+
+        /**
+         * 生成市場交易事件
+         * @param {MarketStatus[]} arr - 市場狀態配置
+         * @param {number} days - 要生成的天數
+         * @param {Date} startAt - 起始時間
+         * @returns {MarketStatusCron[]} - 生成的交易事件
+         */
+        function ToMarketStatusCron(arr, days, startAt) {
+            const result = [];
+
+            arr.forEach(st => {
+                for (let i = 0; i < days; i++) {
+                    // 調整時間偏移，避免靠近排程時間
+                    const now = new Date(startAt.getTime() + (i - 4) * 24 * 60 * 60 * 1000);
+
+                    const weekday = now.getUTCDay();
+                    // 跳過週六和週日
+                    if (weekday === 0 || weekday === 6) continue;
+
+                    // 處理時區
+                    let locTime = convertToTimeZone(now, st.TimeZone);
+
+                    // 處理夜盤交易
+                    if (st.NightStartAt && st.NightDuration) {
+                        const nightStart = parseTime(st.NightStartAt, locTime);
+                        const nightDuration = parseDuration(st.NightDuration);
+                        if (nightDuration > 0) {
+                            result.push(new MarketStatusCron({
+                                Exchange: st.Exchange,
+                                Symbols: st.Symbols,
+                                IsOpen: true,
+                                At: nightStart
+                            }));
+                            const nightEnd = new Date(nightStart.getTime() + nightDuration);
+                            result.push(new MarketStatusCron({
+                                Exchange: st.Exchange,
+                                Symbols: st.Symbols,
+                                IsOpen: false,
+                                At: nightEnd
+                            }));
+                        }
+                    }
+
+                    // 處理日盤交易
+                    if (st.DayStartAt && st.DayDuration) {
+                        // 處理週五的 WeekendShiftDate
+                        if (weekday === 5) {
+                            locTime.setDate(locTime.getDate() + st.WeekendShiftDate);
+                            const newWeekday = locTime.getDay();
+                            if (newWeekday === 0 || newWeekday === 6) continue; // 跳過週末
+                        }
+
+                        const dayStart = parseTime(st.DayStartAt, locTime);
+                        const dayDuration = parseDuration(st.DayDuration);
+                        if (dayDuration > 0) {
+                            result.push(new MarketStatusCron({
+                                Exchange: st.Exchange,
+                                Symbols: st.Symbols,
+                                IsOpen: true,
+                                At: dayStart
+                            }));
+                            const dayEnd = new Date(dayStart.getTime() + dayDuration);
+                            result.push(new MarketStatusCron({
+                                Exchange: st.Exchange,
+                                Symbols: st.Symbols,
+                                IsOpen: false,
+                                At: dayEnd
+                            }));
+                        }
+                    }
+                }
+            });
+
+            // 排序事件
+            result.sort((a, b) => a.At - b.At);
+
+            return result;
+        }
+
+        /**
+         * 解析時間字串並轉換為 Date 物件
+         * @param {string} timeStr - 時間字串，格式 "HH:MM:SS"
+         * @param {Date} baseDate - 基準日期
+         * @returns {Date} - 解析後的 Date 物件
+         */
+        function parseTime(timeStr, baseDate) {
+            const [hours, minutes, seconds = 0] = timeStr.split(':').map(Number);
+            const date = new Date(baseDate);
+            date.setHours(hours, minutes, seconds, 0);  // 使用本地時間設置
+            return date;
+        }
+
+        /**
+         * 解析持續時間字串並轉換為毫秒
+         * @param {string} durationStr - 持續時間字串，格式 "Nh", "Nm", "NhMm", "NhMmSs"
+         * @returns {number} - 持續時間的毫秒數
+         */
+        function parseDuration(durationStr) {
+            let duration = 0;
+            const regex = /(\d+)h|(\d+)m|(\d+)s/g;
+            let match;
+            while ((match = regex.exec(durationStr)) !== null) {
+                if (match[1]) duration += parseInt(match[1]) * 60 * 60 * 1000;
+                if (match[2]) duration += parseInt(match[2]) * 60 * 1000;
+                if (match[3]) duration += parseInt(match[3]) * 1000;
+            }
+            return duration;
+        }
+
+        /**
+         * 將日期轉換為指定時區的時間
+         * @param {Date} date - 原始日期
+         * @param {string} timeZone - 時區名稱，例如 "America/Chicago"
+         * @returns {Date} - 轉換後的日期
+         */
+        function convertToTimeZone(date, timeZone) {
+            // 使用 Luxon 進行時區轉換
+            const dt = luxon.DateTime.fromJSDate(date, { zone: 'utc' }).setZone(timeZone);
+            return dt.toJSDate();
+        }
+
+        /**
+         * 將生成的交易事件顯示在 FullCalendar 中
+         * @param {MarketStatusCron[]} crons - 交易事件
+         */
+        function displaySchedule(crons) {
+            const calendarEl = document.getElementById('calendar');
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',  // 改為月曆視圖
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,timeGridWeek,timeGridDay'  // 添加月/週/日切換選項
+                },
+                events: crons.map(cron => ({
+                    title: `${cron.IsOpen ? '開盤' : '關盤'} - ${cron.Exchange} (${cron.Symbols.join(', ')})`,
+                    start: cron.At,
+                    allDay: false,
+                    backgroundColor: cron.IsOpen ? '#28a745' : '#dc3545',
+                    borderColor: cron.IsOpen ? '#28a745' : '#dc3545'
+                })),
+                nowIndicator: true,
+                timeZone: 'local',
+                height: 'auto',
+                // 添加以下配置以優化月曆視圖的顯示
+                dayMaxEvents: true,  // 當事件過多時顯示"更多"按鈕
+                displayEventTime: true,  // 顯示事件時間
+                eventTimeFormat: {   // 自定義時間格式
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                }
+            });
+            calendar.render();
+        }
+
+        /**
+         * 補零函數
+         * @param {number|string} num - 數字或字串
+         * @returns {string} - 補零後的字串
+         */
+        function pad(num) {
+            return num.toString().padStart(2, '0');
+        }
+
+        /**
+         * 添加市場配置表單
+         */
+        function addMarketForm() {
+            const marketForms = document.getElementById('marketForms');
+            const formCount = marketForms.children.length + 1;
+
+            const formDiv = document.createElement('div');
+            formDiv.className = 'market-form';
+
+            formDiv.innerHTML = `
+                <h2>市場配置 ${formCount} <button class="remove-market-btn">移除</button></h2>
+                <div class="form-group">
+                    <label for="exchange_${formCount}">交易所名稱：</label>
+                    <input type="text" id="exchange_${formCount}" placeholder="例如 CME, SGX">
+                </div>
+                <div class="form-group">
+                    <label for="symbols_${formCount}">交易標的：</label>
+                    <input type="text" id="symbols_${formCount}" placeholder="例如 YM, NK">
+                </div>
+                <div class="form-group">
+                    <label for="dayStartAt_${formCount}">日盤開始時間：</label>
+                    <input type="time" id="dayStartAt_${formCount}" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="dayDuration_${formCount}">日盤持續時間：</label>
+                    <input type="text" id="dayDuration_${formCount}" placeholder="例如 23h, 7h30m">
+                </div>
+                <div class="form-group">
+                    <label for="nightStartAt_${formCount}">夜盤開始時間：</label>
+                    <input type="time" id="nightStartAt_${formCount}" step="1">
+                </div>
+                <div class="form-group">
+                    <label for="nightDuration_${formCount}">夜盤持續時間：</label>
+                    <input type="text" id="nightDuration_${formCount}" placeholder="例如 4h50m, 13h50m">
+                </div>
+                <div class="form-group">
+                    <label for="weekendShiftDate_${formCount}">WeekendShiftDate：</label>
+                    <input type="number" id="weekendShiftDate_${formCount}" min="0" value="0">
+                </div>
+                <div class="form-group">
+                    <label for="timeZone_${formCount}">時區：</label>
+                    <select id="timeZone_${formCount}">
+                        ${getTimeZoneOptions()}
+                    </select>
+                </div>
+            `;
+
+            marketForms.appendChild(formDiv);
+
+            // 添加移除按鈕事件
+            formDiv.querySelector('.remove-market-btn').addEventListener('click', () => {
+                marketForms.removeChild(formDiv);
+            });
+        }
+
+        /**
+         * 獲取時區選項
+         * @returns {string} - HTML 選項字串
+         */
+        function getTimeZoneOptions() {
+            const timeZones = Intl.supportedValuesOf('timeZone');
+            return timeZones.map(tz => `<option value="${tz}">${tz}</option>`).join('');
+        }
+
+        /**
+         * 初始化頁面
+         */
+        function init() {
+            // 添加一個默認的市場配置表單
+            addMarketForm();
+
+            // 添加市場配置表單按鈕事件
+            document.getElementById('addMarketBtn').addEventListener('click', addMarketForm);
+
+            // 生成交易時間表按鈕事件
+            document.getElementById('generateScheduleBtn').addEventListener('click', () => {
+                const marketForms = document.getElementById('marketForms').children;
+                const marketStatuses = [];
+
+                for (let form of marketForms) {
+                    const formId = form.querySelector('h2').innerText.match(/\d+/)[0];
+                    const exchange = document.getElementById(`exchange_${formId}`).value.trim();
+                    const symbols = document.getElementById(`symbols_${formId}`).value.trim();
+                    const dayStartAt = document.getElementById(`dayStartAt_${formId}`).value;
+                    const dayDuration = document.getElementById(`dayDuration_${formId}`).value.trim();
+                    const nightStartAt = document.getElementById(`nightStartAt_${formId}`).value;
+                    const nightDuration = document.getElementById(`nightDuration_${formId}`).value.trim();
+                    const weekendShiftDate = document.getElementById(`weekendShiftDate_${formId}`).value;
+                    const timeZone = document.getElementById(`timeZone_${formId}`).value;
+
+                    if (!exchange || !symbols || !dayStartAt || !dayDuration) {
+                        alert(`請填寫市場配置 ${formId} 的所有必填欄位。`);
+                        return;
+                    }
+
+                    marketStatuses.push(new MarketStatus({
+                        Exchange: exchange,
+                        Symbols: symbols,
+                        DayStartAt: dayStartAt,
+                        DayDuration: dayDuration,
+                        NightStartAt: nightStartAt,
+                        NightDuration: nightDuration,
+                        WeekendShiftDate: weekendShiftDate,
+                        TimeZone: timeZone
+                    }));
+                }
+
+                const daysToGenerate = 14;
+                const startAt = new Date();
+
+                const crons = ToMarketStatusCron(marketStatuses, daysToGenerate, startAt);
+                console.log(crons);
+
+                // 顯示交易事件
+                displaySchedule(crons);
+            });
+        }
+
+        // 初始化頁面
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
