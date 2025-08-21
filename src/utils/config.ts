@@ -89,7 +89,7 @@ const configParsers = {
 	},
 	model(model?: string) {
 		if (!model || model.length === 0) {
-			return 'gpt-4o-mini';
+			return 'gpt-5';
 		}
 
 		return model as TiktokenModel;
