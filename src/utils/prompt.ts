@@ -47,14 +47,17 @@ export const generatePrompt = (
 	return `
   Instructions:
   
-  1. Understand the Draft and Intention
+  0. Understand the Draft and Intention
 	 - Draft: \`${draft}\`
 	 - Intention: Ensure the commit message aligns with the provided draft and goals.
-  
+
+  1. Gerrit friendly
+     - We use gerrit for reviewing code. Some fields will be generated automatically e.g. Change-Id, Reviewed-By. Do Not include these fields in the commit message. 
+
   2. Commit Message Structure:
 	 - Header: \`<component>: <subject>\` (Totally less than 60 characters, ideally 40-50)
 	 - Body: Detailed explanation (better to have)
-  
+
   3. Guidelines:
      - Component:
 	   - Specifies the module or area or executable affected by the commit, such as auth, ui, or database.
@@ -64,13 +67,14 @@ export const generatePrompt = (
 	   - Do not exceed 50 characters.
 	   - Avoid ending with a period.
 	   - Avoid using generic or filler phrases. Keep the subject clear and concise.
-  
+       - Explain why we did this change. Is this change was trying to fix something? developing some features? adding some missing parts? Guess author's intention and describe it. If it's in a chat, please ask anything if you find it confused. What is the problem if we don't have this change?
+
 	 - Body:
 	   - Separate from the subject with one empty line.
 	   - Wrap lines at 80 characters.
 	   - Explain the "why" and "how" of the change.
 	   - Avoid redundant statements. Focus on essential details.
-  
+
   4. Style:
 	- Use Clear and Concise Language:
 		- Opt for simple and direct words.
@@ -95,17 +99,29 @@ export const generatePrompt = (
 		- Do not include phrases like "This enhancement improves..." or "This update allows..."
 	- Ensure Proper Grammar and Punctuation:
 		- Use correct grammar to maintain professionalism.
-    - Proper punctuation helps in conveying the message clearly.	 
-  
+    - Proper punctuation helps in conveying the message clearly.
+
   5. Output:
 	 - Provide the commit message following the Gerrit style.
 	 - Ensure the subject line is concise and within the specified character limit.
-  
+
   Example Format:
-  
+
   <component>: <subject>
-  
+
   <body>
+
+  Special Rules for Components: 
+  
+  This is a list to let you describe component precisely. Sometimes multiple rules are matched, 
+  in this case you should find the most relevant one.
+
+  - \`tenant/option\` \`tenant/future\` \`tenant/stock\` for changes related to optioncore, futurecore, stockcore.
+  - \`cockpit/hestia\` for changes in hestia.
+  - \`tenant\` for changes related to tenant itself and not its cores.
+  - \`lib/[placeholder]\` \`pkg/[placeholder]\` \`internal/[placeholder]\` for libraries.
+  - \`app/[placeholder]\` \`appmodule/[placeholder]\` for certain app or appmodule.
+  - \`health\` \`database\` \`logging\` \`cache\` for singleton packages.
   
   Your Task:
   Using the above guidelines and the provided draft, generate a well-structured Gerrit-style commit message. Ensure the subject line is concise and within the specified character limit.
