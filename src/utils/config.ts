@@ -89,14 +89,14 @@ const configParsers = {
 	},
 	model(model?: string) {
 		if (!model || model.length === 0) {
-			return 'gpt-5';
+			return 'gpt-5-mini';
 		}
 
 		return model as TiktokenModel;
 	},
 	timeout(timeout?: string) {
 		if (!timeout) {
-			return 10_000;
+			return 30_000;
 		}
 
 		parseAssert('timeout', /^\d+$/.test(timeout), 'Must be an integer');

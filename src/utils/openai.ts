@@ -111,6 +111,12 @@ const sanitizeMessage = (message: string) =>
 
 const deduplicateMessages = (array: string[]) => Array.from(new Set(array));
 
+const usesMaxCompletionTokens = (model: string) =>
+	/^(gpt-5|o\d)/i.test(model);
+
+const getOutputTokenLimit = (model: string) =>
+	usesMaxCompletionTokens(model) ? 600 : 500;
+
 // const generateStringFromLength = (length: number) => {
 // 	let result = '';
 // 	const highestTokenChar = 'z';
@@ -141,28 +147,41 @@ export const generateCommitMessage = async (
 	proxy?: string
 ) => {
 	try {
+		const completionRequest: CreateChatCompletionRequest & {
+			max_completion_tokens?: number;
+			reasoning_effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+		} = {
+			model,
+			messages: [
+				{
+					role: 'system',
+					content: generatePrompt(locale, maxLength, type, draft),
+				},
+				{
+					role: 'user',
+					content: diff,
+				},
+			],
+			stream: false,
+			n: completions,
+			...(usesMaxCompletionTokens(model)
+				? {
+						reasoning_effort: 'minimal',
+					}
+				: {
+						temperature: 0.7,
+						top_p: 1,
+						frequency_penalty: 0,
+						presence_penalty: 0,
+					}),
+			...(usesMaxCompletionTokens(model)
+				? { max_completion_tokens: getOutputTokenLimit(model) }
+				: { max_tokens: getOutputTokenLimit(model) }),
+		};
+
 		const completion = await createChatCompletion(
 			apiKey,
-			{
-				model,
-				messages: [
-					{
-						role: 'system',
-						content: generatePrompt(locale, maxLength, type, draft),
-					},
-					{
-						role: 'user',
-						content: diff,
-					},
-				],
-				temperature: 0.7,
-				top_p: 1,
-				frequency_penalty: 0,
-				presence_penalty: 0,
-				max_tokens: 500,
-				stream: false,
-				n: completions,
-			},
+			completionRequest,
 			timeout,
 			proxy
 		);

@@ -205,20 +205,20 @@ aicommits config set proxy=
 
 #### model
 
-Default: `gpt-4o-mini`
+Default: `gpt-5-mini`
 
-The Chat Completions (`/v1/chat/completions`) model to use. Consult the list of models available in the [OpenAI Documentation](https://platform.openai.com/docs/models/model-endpoint-compatibility).
+The Chat Completions (`/v1/chat/completions`) model to use. Use a model from the flagship `gpt-5` family and consult the [OpenAI model endpoint compatibility table](https://platform.openai.com/docs/models/model-endpoint-compatibility).
 
-> Tip: If you need more advanced capabilities, you can try upgrading to [`gpt-4o`](https://platform.openai.com/docs/models/gpt-4o) for enhanced code analysis. It offers better performance but comes at a higher cost. Check out OpenAI's website to learn more.
+> Tip: If you need stronger reasoning quality, upgrade to [`gpt-5`](https://platform.openai.com/docs/models/gpt-5). If you need lower latency, stay on `gpt-5-mini`.
 
 #### timeout
 
 The timeout for network requests to the OpenAI API in milliseconds.
 
-Default: `10000` (10 seconds)
+Default: `30000` (30 seconds)
 
 ```sh
-aicommits config set timeout=20000 # 20s
+aicommits config set timeout=60000 # 60s
 ```
 
 #### max-length
